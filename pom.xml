@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.jgroups.rolling-upgrades</groupId>
+  <artifactId>upgrade-jgroups-5.2</artifactId>
+  <version>5.2-SNAPSHOT</version>
+  <packaging>jar</packaging>
+  <name>upgrade-jgroups-5.2</name>
+  <description>UPGRADE protocol for JGroups 5.2.x</description>
+  <url>https://github.com/jgroups-extras/rolling-upgrades/upgrade-jgroups-5.2</url>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.source>11</maven.compiler.source>
+    <maven.compiler.target>11</maven.compiler.target>
+    <autoReleaseAfterClose>true</autoReleaseAfterClose>
+    <nexus.server.id>jboss-releases-repository</nexus.server.id>
+    <nexus.server.url>https://repository.jboss.org/nexus</nexus.server.url>
+    <nexus.snapshot.server.id>jboss-snapshots-repository</nexus.snapshot.server.id>
+    <nexus.snapshot.server.url>https://repository.jboss.org/nexus/content/repositories/snapshots/</nexus.snapshot.server.url>
+    <testng.version>7.8.0</testng.version>
+  </properties>
+
+  <organization>
+    <name>Red Hat</name>
+    <url>http://www.redhat.com</url>
+  </organization>
+
+  <developers>
+    <developer>
+      <name>Bela Ban</name>
+      <email>belaban@gmail.com</email>
+    </developer>
+  </developers>
+
+  <licenses>
+    <license>
+      <name>Apache License Version 2.0</name>
+      <url>https://repository.jboss.org/licenses/apache-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <distributionManagement>
+    <repository>
+      <id>${nexus.server.id}</id>
+      <name>JBoss Releases Repository</name>
+      <url>${nexus.server.url}</url>
+    </repository>
+    <snapshotRepository>
+      <id>${nexus.snapshot.server.id}</id>
+      <url>${nexus.snapshot.server.url}</url>
+    </snapshotRepository>
+  </distributionManagement>
+
+  <repositories>
+    <repository>
+      <id>jboss-public-repository-group</id>
+      <name>JBoss Public Maven Repository Group</name>
+      <url>https://repository.jboss.org/nexus/content/groups/public/</url>
+      <layout>default</layout>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>interval:120</updatePolicy>
+      </snapshots>
+    </repository>
+    <repository>
+      <id>jboss-snapshots-repository</id>
+      <name>JBoss Nexus snapshots repository</name>
+      <url>https://repository.jboss.org/nexus/content/repositories/snapshots/</url>
+      <layout>default</layout>
+      <releases>
+        <enabled>false</enabled>
+        <updatePolicy>never</updatePolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>interval:120</updatePolicy>
+      </snapshots>
+    </repository>
+  </repositories>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.jgroups.rolling-upgrades</groupId>
+      <artifactId>upgrade-common</artifactId>
+      <version>1.0-SNAPSHOT</version>
+    </dependency>
+    <dependency>
+      <groupId>org.jgroups</groupId>
+      <artifactId>jgroups</artifactId>
+      <version>5.2.20.Final-SNAPSHOT</version>
+      <scope>provided</scope>
+      <optional>true</optional>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <extensions>
+      <extension>
+        <groupId>kr.motd.maven</groupId>
+        <artifactId>os-maven-plugin</artifactId>
+        <version>1.7.1</version>
+      </extension>
+    </extensions>
+    <plugins>
+      <plugin>
+        <groupId>org.sonatype.plugins</groupId>
+        <artifactId>nexus-staging-maven-plugin</artifactId>
+        <extensions>true</extensions>
+        <configuration>
+          <!-- See configuration details at http://books.sonatype.com/nexus-book/reference/staging-deployment.html -->
+          <nexusUrl>${nexus.server.url}</nexusUrl>
+          <serverId>${nexus.server.id}</serverId>
+          <autoReleaseAfterClose>true</autoReleaseAfterClose>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <inherited>true</inherited>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>jar-no-fork</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals>
+              <goal>copy-dependencies</goal>
+            </goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/lib</outputDirectory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+
+  </build>
+
+</project>
