@@ -44,6 +44,13 @@
     </license>
   </licenses>
 
+  <scm>
+    <connection>scm:git:git://github.com/jgroups-extras/upgrade-jgroups-5.2.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/jgroups-extras/upgrade-jgroups-5.2.git</developerConnection>
+    <url>https://github.com/jgroups-extras/upgrade-jgroups-5.2</url>
+    <tag>HEAD</tag>
+  </scm>
+
   <distributionManagement>
     <repository>
       <id>${nexus.server.id}</id>
