@@ -5,7 +5,7 @@
 
   <groupId>org.jgroups.rolling-upgrades</groupId>
   <artifactId>upgrade-jgroups</artifactId>
-  <version>5.2-SNAPSHOT</version>
+  <version>5.2</version>
   <packaging>jar</packaging>
   <name>upgrade-jgroups</name>
   <description>UPGRADE protocol for JGroups 5.2.x</description>
@@ -47,7 +47,7 @@
     <connection>scm:git:git://github.com/jgroups-extras/upgrade-jgroups-5.2.git</connection>
     <developerConnection>scm:git:ssh://git@github.com/jgroups-extras/upgrade-jgroups-5.2.git</developerConnection>
     <url>https://github.com/jgroups-extras/upgrade-jgroups-5.2</url>
-    <tag>HEAD</tag>
+    <tag>upgrade-jgroups-5.2</tag>
   </scm>
 
   <distributionManagement>
