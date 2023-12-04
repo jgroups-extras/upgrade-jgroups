@@ -1,4 +1,4 @@
-= upgrade-jgroups-5.2
+= upgrade-jgroups
 
 `UPGRADE` protocol for JGroups 5.2.x for rolling upgrades. This is the version-specific code which
 has `UPGRADE` send mesage to the UpgradeServer and receive messages and view from it.
