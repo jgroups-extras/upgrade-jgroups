@@ -5,11 +5,11 @@
 
   <groupId>org.jgroups.rolling-upgrades</groupId>
   <artifactId>upgrade-jgroups</artifactId>
-  <version>5.2.1-SNAPSHOT</version>
+  <version>5.3.0-SNAPSHOT</version>
   <packaging>jar</packaging>
   <name>upgrade-jgroups</name>
-  <description>UPGRADE protocol for JGroups 5.2.x</description>
-  <url>https://github.com/jgroups-extras/rolling-upgrades/upgrade-jgroups-5.2</url>
+  <description>UPGRADE protocol for JGroups 5.3.x</description>
+  <url>https://github.com/jgroups-extras/upgrade-jgroups</url>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -102,7 +102,7 @@
     <dependency>
       <groupId>org.jgroups</groupId>
       <artifactId>jgroups</artifactId>
-      <version>5.2.20.Final-SNAPSHOT</version>
+      <version>5.3.0.Final</version>
       <scope>provided</scope>
       <optional>true</optional>
     </dependency>
