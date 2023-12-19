@@ -109,10 +109,10 @@ public abstract class UpgradeBase5_2 extends Protocol {
 
     public void init() throws Exception {
         super.init();
-        client.setServerAddress(server_address).setServerPort(server_port).setServerCert(server_cert)
+        client.serverAddress(server_address).serverPort(server_port).serverCert(server_cert)
           .addViewHandler(this::handleView).addMessageHandler(this::handleMessage)
-          .setViewResponseHandler(this::handleViewResponse)
-          .setReconnectionFunction(this::connect).setReconnectInterval(reconnect_interval)
+          .viewResponseHandler(this::handleViewResponse)
+          .reconnectionFunction(this::connect).reconnectInterval(reconnect_interval)
           .start();
     }
 
@@ -256,7 +256,6 @@ public abstract class UpgradeBase5_2 extends Protocol {
         }
         else
             log.debug("%s: I'm not coordinator, waiting for new MergeView from global view %s", local_addr, view);
-        // disconnect();
         active=false;
     }
 
