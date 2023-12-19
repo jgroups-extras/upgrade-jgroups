@@ -9,7 +9,7 @@
   <packaging>jar</packaging>
   <name>upgrade-jgroups</name>
   <description>UPGRADE protocol for JGroups 5.2.x</description>
-  <url>https://github.com/jgroups-extras/rolling-upgrades/upgrade-jgroups-5.2</url>
+  <url>https://github.com/jgroups-extras/upgrade-jgroups</url>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
