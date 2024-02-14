@@ -1,28 +1,25 @@
 package org.jgroups.protocols;
 
-import com.google.protobuf.ProtocolStringList;
-import org.jgroups.Address;
-import org.jgroups.Message;
-import org.jgroups.View;
 import org.jgroups.*;
 import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.ManagedAttribute;
 import org.jgroups.annotations.ManagedOperation;
 import org.jgroups.annotations.Property;
-import org.jgroups.blocks.RequestCorrelator;
-import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.pbcast.GMS;
-import org.jgroups.protocols.relay.RELAY2;
 import org.jgroups.protocols.relay.SiteMaster;
 import org.jgroups.protocols.relay.SiteUUID;
-import org.jgroups.rolling_upgrades.*;
+import org.jgroups.rolling_upgrades.ConnectionStatus;
+import org.jgroups.rolling_upgrades.Marshaller;
+import org.jgroups.rolling_upgrades.Request;
+import org.jgroups.rolling_upgrades.UpgradeClient;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.NameCache;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
-import static org.jgroups.protocols.relay.RelayHeader.*;
 import static org.jgroups.rolling_upgrades.ConnectionStatus.State.connected;
 import static org.jgroups.rolling_upgrades.ConnectionStatus.State.disconnecting;
 
@@ -35,7 +32,7 @@ import static org.jgroups.rolling_upgrades.ConnectionStatus.State.disconnecting;
  * @todo: implement reconnection to server (server went down and then up again)
  */
 @MBean(description="Protocol that redirects all messages to/from an UpgradeServer")
-public abstract class UpgradeBase5_2 extends Protocol {
+public abstract class UpgradeBase extends Protocol {
     @Property(description="Whether or not to perform relaying via the UpgradeServer", writable=false)
     protected volatile boolean   active;
 
@@ -68,8 +65,13 @@ public abstract class UpgradeBase5_2 extends Protocol {
 
     protected Marshaller         marshaller;
 
-    protected static final short REQ_ID=ClassConfigurator.getProtocolId(RequestCorrelator.class);
-    protected static final short RELAY2_ID=ClassConfigurator.getProtocolId(RELAY2.class);
+    protected MessageFactory     msg_factory;
+
+
+    protected abstract org.jgroups.rolling_upgrades.Message jgMessageToProtoMessage(String cluster, Message jg_msg)
+      throws Exception;
+    protected abstract Message protoMessageToJGMessage(org.jgroups.rolling_upgrades.Message proto_msg) throws Exception;
+
 
     @ManagedAttribute
     public String getMarshaller() {
@@ -80,7 +82,7 @@ public abstract class UpgradeBase5_2 extends Protocol {
         return marshaller;
     }
 
-    public <T extends UpgradeBase5_2> T marshaller(Marshaller m) {
+    public <T extends UpgradeBase> T marshaller(Marshaller m) {
         this.marshaller=m;
         return (T)this;
     }
@@ -89,7 +91,7 @@ public abstract class UpgradeBase5_2 extends Protocol {
         return rpcs;
     }
 
-    public <T extends UpgradeBase5_2> T setRpcs(boolean r) {
+    public <T extends UpgradeBase> T setRpcs(boolean r) {
         rpcs=r;
         return (T)this;
     }
@@ -109,6 +111,7 @@ public abstract class UpgradeBase5_2 extends Protocol {
 
     public void init() throws Exception {
         super.init();
+        msg_factory=getTransport().getMessageFactory();
         client.serverAddress(server_address).serverPort(server_port).serverCert(server_cert)
           .addViewHandler(this::handleView).addMessageHandler(this::handleMessage)
           .viewResponseHandler(this::handleViewResponse)
@@ -156,6 +159,7 @@ public abstract class UpgradeBase5_2 extends Protocol {
             case Event.CONNECT_WITH_STATE_TRANSFER:
             case Event.CONNECT_WITH_STATE_TRANSFER_USE_FLUSH:
                 cluster=evt.arg();
+                // todo: check if View is relayed to all members, this would be incompatible!
                 Object ret=down_prot.down(evt);
                 if(active)
                     connect();
@@ -187,7 +191,7 @@ public abstract class UpgradeBase5_2 extends Protocol {
         if(msg.getSrc() == null)
             msg.setSrc(local_addr);
         try {
-            org.jgroups.rolling_upgrades.Message m=jgroupsMessageToProtobufMessage(cluster, msg);
+            org.jgroups.rolling_upgrades.Message m=jgMessageToProtoMessage(cluster, msg);
             Request req=Request.newBuilder().setMessage(m).build();
             client.send(req);
         }
@@ -198,8 +202,8 @@ public abstract class UpgradeBase5_2 extends Protocol {
     }
 
     protected void registerView() {
-        org.jgroups.rolling_upgrades.View v=jgroupsViewToProtobufView(local_view);
-        org.jgroups.rolling_upgrades.Address local=jgroupsAddressToProtobufAddress(local_addr);
+        org.jgroups.rolling_upgrades.View v=jgViewToProtoView(local_view);
+        org.jgroups.rolling_upgrades.Address local=jgAddressToProtoAddress(local_addr);
         log.debug("%s: registering view %s", local_addr, local_view);
         client.registerView(cluster, v, local);
     }
@@ -210,19 +214,19 @@ public abstract class UpgradeBase5_2 extends Protocol {
     }
 
     protected void connect() {
-        org.jgroups.rolling_upgrades.Address addr=jgroupsAddressToProtobufAddress(local_addr);
+        org.jgroups.rolling_upgrades.Address addr=jgAddressToProtoAddress(local_addr);
         log.debug("%s: joining cluster %s", local_addr, cluster);
         client.connect(cluster, addr);
     }
 
     protected void disconnect() {
-        org.jgroups.rolling_upgrades.Address addr=jgroupsAddressToProtobufAddress(local_addr);
+        org.jgroups.rolling_upgrades.Address addr=jgAddressToProtoAddress(local_addr);
         log.debug("%s: leaving cluster %s", local_addr, cluster);
         client.disconnect(cluster, addr);
     }
 
     protected void handleView(org.jgroups.rolling_upgrades.View view) {
-        View jg_view=protobufViewToJGroupsView(view);
+        View jg_view=protoViewToJGView(view);
         if(!active) {
             log.warn("%s: global view %s from server is discarded as active == false", local_addr, jg_view);
             return;
@@ -234,7 +238,7 @@ public abstract class UpgradeBase5_2 extends Protocol {
 
     protected void handleMessage(org.jgroups.rolling_upgrades.Message m) {
         try {
-            Message msg=protobufMessageToJGroupsMessage(m);
+            Message msg=protoMessageToJGMessage(m);
             up_prot.up(msg);
         }
         catch(Exception e) {
@@ -244,7 +248,7 @@ public abstract class UpgradeBase5_2 extends Protocol {
 
     protected void handleViewResponse(org.jgroups.rolling_upgrades.GetViewResponse rsp) {
         org.jgroups.rolling_upgrades.View v=rsp.getView();
-        View view=protobufViewToJGroupsView(v);
+        View view=protoViewToJGView(v);
 
         // Install a MergeView *if* I'm the coordinator of the global view
         if(Objects.equals(local_addr, view.getCreator())) {
@@ -259,136 +263,8 @@ public abstract class UpgradeBase5_2 extends Protocol {
         active=false;
     }
 
-    protected static org.jgroups.rolling_upgrades.Message.Builder msgBuilder(String cluster, Address src, Address dest,
-                                                                           short flags, Metadata md) {
-        org.jgroups.rolling_upgrades.Message.Builder builder=org.jgroups.rolling_upgrades.Message.newBuilder()
-          .setClusterName(cluster);
-        if(dest !=null)
-            builder.setDestination(jgroupsAddressToProtobufAddress(dest));
-        if(src != null)
-            builder.setSender(jgroupsAddressToProtobufAddress(src));
-        if(md != null)
-            builder.setMetaData(md);
-        return builder.setFlags(flags);
-    }
 
-    protected static boolean setHeaders(org.jgroups.rolling_upgrades.Message.Builder builder,
-                                        RequestCorrelator.Header req_hdr,
-                                        org.jgroups.protocols.relay.RelayHeader relay_hdr) {
-        boolean is_rsp=false;
-        Headers.Builder hdr_builder=Headers.newBuilder();
-        if(req_hdr != null) {
-            RpcHeader pbuf_hdr=jgroupsReqHeaderToProtobufRpcHeader(req_hdr);
-            hdr_builder.setRpcHdr(pbuf_hdr);
-            is_rsp=req_hdr.type == RequestCorrelator.Header.RSP || req_hdr.type == RequestCorrelator.Header.EXC_RSP;
-        }
-        if(relay_hdr!= null) {
-            RelayHeader h=jgroupsRelayHeaderToProtobuf(relay_hdr);
-            hdr_builder.setRelayHdr(h);
-        }
-        builder.setHeaders(hdr_builder.build());
-        return is_rsp;
-    }
-
-    protected abstract org.jgroups.rolling_upgrades.Message jgroupsMessageToProtobufMessage(String cluster, Message jg_msg)
-      throws Exception;
-
-    protected abstract Message protobufMessageToJGroupsMessage(org.jgroups.rolling_upgrades.Message msg) throws Exception;
-
-
-    protected static RpcHeader jgroupsReqHeaderToProtobufRpcHeader(RequestCorrelator.Header hdr) {
-        RpcHeader.Builder builder = RpcHeader.newBuilder().setType(hdr.type).setRequestId(hdr.req_id).setCorrId(hdr.corrId);
-        if (hdr instanceof RequestCorrelator.MultiDestinationHeader) {
-            RequestCorrelator.MultiDestinationHeader mdhdr = (RequestCorrelator.MultiDestinationHeader) hdr;
-            Address[] exclusions = mdhdr.exclusion_list;
-            if (exclusions != null && exclusions.length > 0) {
-                builder.addAllExclusionList(Arrays.stream(exclusions).map(UpgradeBase5_2::jgroupsAddressToProtobufAddress)
-                                              .collect(Collectors.toList()));
-            }
-        }
-        return builder.build();
-    }
-
-    protected static RequestCorrelator.Header protobufRpcHeaderToJGroupsReqHeader(RpcHeader hdr) {
-        byte type=(byte)hdr.getType();
-        long request_id=hdr.getRequestId();
-        short corr_id=(short)hdr.getCorrId();
-        return (RequestCorrelator.Header)new RequestCorrelator.Header(type, request_id, corr_id).setProtId(REQ_ID);
-    }
-
-    protected static RelayHeader jgroupsRelayHeaderToProtobuf(org.jgroups.protocols.relay.RelayHeader jg_hdr) {
-        RelayHeader.Builder rb=RelayHeader.newBuilder();
-        switch(jg_hdr.getType()) {
-            case DATA: rb.setType(RelayHeader.Type.DATA); break;
-            case SITE_UNREACHABLE: rb.setType(RelayHeader.Type.SITE_UNREACHABLE); break;
-            case SITES_UP: rb.setType(RelayHeader.Type.SITES_UP); break;
-            case SITES_DOWN: rb.setType(RelayHeader.Type.SITES_DOWN); break;
-            case TOPO_REQ: rb.setType(RelayHeader.Type.TOPO_REQ); break;
-            case TOPO_RSP: rb.setType(RelayHeader.Type.TOPO_RSP); break;
-        }
-
-        if(jg_hdr.getFinalDest() != null) {
-            org.jgroups.rolling_upgrades.Address addr=jgroupsAddressToProtobufAddress(jg_hdr.getFinalDest());
-            rb.setFinalDest(addr);
-        }
-
-        if(jg_hdr.getOriginalSender() != null) {
-            org.jgroups.rolling_upgrades.Address addr=jgroupsAddressToProtobufAddress(jg_hdr.getOriginalSender());
-            rb.setOriginalSender(addr);
-        }
-
-        Set<String> sites=jg_hdr.getSites();
-        if(sites != null && !sites.isEmpty())
-            rb.addAllSites(sites);
-        return rb.build();
-    }
-
-    protected static org.jgroups.protocols.relay.RelayHeader protobufRelayHeaderToJGroups(RelayHeader pbuf_hdr) {
-        byte        type=-1;
-        Address     final_dest=null, original_sender=null;
-        Set<String> sites=null;
-
-        RelayHeader.Type pbuf_type=pbuf_hdr.getType();
-        switch(pbuf_type) {
-            case DATA: type=DATA;
-                break;
-            case SITE_UNREACHABLE:
-                type=SITE_UNREACHABLE;
-                break;
-            case HOST_UNREACHABLE:
-                // was removed in 5.2.18
-                break;
-            case SITES_UP:
-                type=SITES_UP;
-                break;
-            case SITES_DOWN:
-                type=SITES_DOWN;
-                break;
-            case TOPO_REQ:
-                type=TOPO_REQ;
-                break;
-            case TOPO_RSP:
-                type=TOPO_RSP;
-                break;
-            case UNRECOGNIZED:
-                throw new IllegalArgumentException("type is UNRECOGNIZED");
-        }
-        if(pbuf_hdr.hasFinalDest())
-            final_dest=protobufAddressToJGroupsAddress(pbuf_hdr.getFinalDest());
-
-        if(pbuf_hdr.hasOriginalSender())
-            original_sender=protobufAddressToJGroupsAddress(pbuf_hdr.getOriginalSender());
-        ProtocolStringList pbuf_sites=pbuf_hdr.getSitesList();
-        if(pbuf_sites != null)
-            sites=new HashSet<>(pbuf_sites);
-        org.jgroups.protocols.relay.RelayHeader hdr=new org.jgroups.protocols.relay.RelayHeader(type, final_dest, original_sender);
-        if(sites != null)
-            hdr.addToSites(sites);
-        return hdr;
-    }
-
-
-    protected static org.jgroups.rolling_upgrades.Address jgroupsAddressToProtobufAddress(Address jgroups_addr) {
+    protected static org.jgroups.rolling_upgrades.Address jgAddressToProtoAddress(Address jgroups_addr) {
         if(jgroups_addr == null)
             return org.jgroups.rolling_upgrades.Address.newBuilder().build();
         if(!(jgroups_addr instanceof org.jgroups.util.UUID))
@@ -419,7 +295,7 @@ public abstract class UpgradeBase5_2 extends Protocol {
         return addr_builder.build();
     }
 
-    protected static Address protobufAddressToJGroupsAddress(org.jgroups.rolling_upgrades.Address pbuf_addr) {
+    protected static Address protoAddressToJGAddress(org.jgroups.rolling_upgrades.Address pbuf_addr) {
         if(pbuf_addr == null)
             return null;
 
@@ -445,26 +321,24 @@ public abstract class UpgradeBase5_2 extends Protocol {
         return retval;
     }
 
-    protected static org.jgroups.rolling_upgrades.View jgroupsViewToProtobufView(View v) {
-        org.jgroups.rolling_upgrades.ViewId view_id=jgroupsViewIdToProtobufViewId(v.getViewId());
+    protected static org.jgroups.rolling_upgrades.View jgViewToProtoView(View v) {
+        org.jgroups.rolling_upgrades.ViewId view_id=jgViewIdToProtoViewId(v.getViewId());
         List<org.jgroups.rolling_upgrades.Address> mbrs=new ArrayList<>(v.size());
         for(Address a: v)
-            mbrs.add(jgroupsAddressToProtobufAddress(a));
+            mbrs.add(jgAddressToProtoAddress(a));
         return org.jgroups.rolling_upgrades.View.newBuilder().addAllMember(mbrs).setViewId(view_id).build();
     }
 
-    protected static org.jgroups.rolling_upgrades.ViewId jgroupsViewIdToProtobufViewId(org.jgroups.ViewId view_id) {
-        org.jgroups.rolling_upgrades.Address coord=jgroupsAddressToProtobufAddress(view_id.getCreator());
+    protected static org.jgroups.rolling_upgrades.ViewId jgViewIdToProtoViewId(org.jgroups.ViewId view_id) {
+        org.jgroups.rolling_upgrades.Address coord=jgAddressToProtoAddress(view_id.getCreator());
         return org.jgroups.rolling_upgrades.ViewId.newBuilder().setCreator(coord).setId(view_id.getId()).build();
     }
 
-    protected static org.jgroups.View protobufViewToJGroupsView(org.jgroups.rolling_upgrades.View v) {
-        org.jgroups.rolling_upgrades.ViewId pbuf_vid=v.getViewId();
+    protected static org.jgroups.View protoViewToJGView(org.jgroups.rolling_upgrades.View v) {
+        org.jgroups.rolling_upgrades.ViewId vid=v.getViewId();
         List<org.jgroups.rolling_upgrades.Address> pbuf_mbrs=v.getMemberList();
-        org.jgroups.ViewId jg_vid=new org.jgroups.ViewId(protobufAddressToJGroupsAddress(pbuf_vid.getCreator()),
-                                                         pbuf_vid.getId());
-        List<Address> members=new ArrayList<>();
-        pbuf_mbrs.stream().map(UpgradeBase5_2::protobufAddressToJGroupsAddress).forEach(members::add);
+        org.jgroups.ViewId jg_vid=new org.jgroups.ViewId(protoAddressToJGAddress(vid.getCreator()), vid.getId());
+        List<Address> members=pbuf_mbrs.stream().map(UpgradeBase::protoAddressToJGAddress).collect(Collectors.toList());
         return new org.jgroups.View(jg_vid, members);
     }
 
